@@ -9,13 +9,13 @@ import urllib.request
 
 
 def main():
-    # define args
-    # TODO: add out dir
     parser = argparse.ArgumentParser()
-    parser.add_argument('url', help='vod archive url')
+    parser.add_argument('url', help='vod url')
     parser.add_argument('-l', '--list', help='list available encodings and exit', action='store_true')
     parser.add_argument('-q', '--quality', help='define which quality of video to download', type=int, metavar='#',
                         default=1)
+    parser.add_argument('-o', '--outdir', help='directory to save the video to', type=str, metavar='path',
+                        default=os.getcwd())
     args = parser.parse_args()
 
     vod_id = args.url.split('/')[-1]
@@ -31,14 +31,14 @@ def main():
     vid_info = parse_vod_m3u8(playback_url)
     videos = []
     for vid in vid_info:
-        v = Video(user, title, vid['resolution'], vid['quality'], vid['url'])
+        v = Video(user, title, vid['resolution'], vid['quality'], vid['url'], vid['bandwidth'])
         videos.append(v)
 
     if args.list:
         print_qualities(videos)
         sys.exit(0)
 
-    if args.quality > len(videos) or args.quality < 0:
+    if args.quality > len(videos) or args.quality <= 0:
         raise Exception('Selected quality doesn\'t exist')
 
     # download video
@@ -46,7 +46,7 @@ def main():
         video = videos[args.quality - 1]
     except IndexError:
         video = videos[0]
-    video.download()
+    video.download(args.outdir)
     sys.exit(0)
 
 
@@ -54,14 +54,14 @@ def get_playback_info(url):
     response = urllib.request.urlopen(url)
     html = response.read().decode('utf-8')
     text = html.replace('\n', '').replace('\t', '')
-    match = re.search('<script>window.__APOLLO_STATE__=(.*);\(function', text)
+    match = re.search('window.__APOLLO_STATE__=(.*);\(function', text)
     if not match:
         raise Exception('Failed to find playback info')
     return json.loads(match.group(1))
 
 
 def print_qualities(videos):
-    print(f'\n{videos[0].user} - {videos[0].title}')
+    print(f'{videos[0].user} - {videos[0].title} - {format_duration(videos[0].duration)}')
     for i, video in enumerate(videos):
         print(f'{i + 1} - {video.quality} - {video.resolution}')
 
@@ -77,13 +77,26 @@ def parse_vod_m3u8(url):
             match = re.search(re_str, line)
             v = {'resolution': match.group('resolution'),
                  'quality': match.group('quality'),
-                 'url': m3u8_lines[i + 1]}
+                 'url': m3u8_lines[i + 1],
+                 'bandwidth': int(match.group('bandwidth'))}
             vid_info.append(v)
     return vid_info
 
 
+def format_duration(duration):
+    mins, secs = divmod(duration, 60)
+    hrs, mins = divmod(mins, 60)
+    hrs = int(hrs)
+    mins = int(mins)
+    secs = int(secs)
+    if hrs:
+        return f'{hrs:02}:{mins:02}:{secs:02}'
+    else:
+        return f'{mins:02}:{secs:02}'
+
+
 class Video(object):
-    def __init__(self, user, title, resolution, quality, playback_url):
+    def __init__(self, user, title, resolution, quality, playback_url, bandwidth):
         self.user = user
         self.title = title
         self.resolution = resolution
@@ -94,10 +107,9 @@ class Video(object):
         self._duration = None
         self._m3u8 = None
         self._size = None
+        self._bandwidth = bandwidth
 
-    def download(self, out_dir=None):
-        if not out_dir:
-            out_dir = os.getcwd()
+    def download(self, out_dir):
         temp_dir = tempfile.TemporaryDirectory()
         ts_files = self._download_ts_files(temp_dir)
         self._merge_ts_files(ts_files, out_dir)
@@ -165,14 +177,6 @@ class Video(object):
             if match:
                 self._duration += float(match.group(1))
         return self._duration
-
-    # @property
-    # def size(self):
-    #     if self._size:
-    #         return self._size
-    #     # convert to MBs
-    #     self._size = (self.video_kbps + self.audio_kbps) * (self.duration / 60) * 0.0075
-    #     return self._size
 
 
 if __name__ == '__main__':

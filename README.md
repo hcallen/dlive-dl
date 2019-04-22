@@ -10,15 +10,17 @@ A script to download dlive.tv VODs. It's a very quick and dirty port of my [stre
 Show help
 ```console
 $ python3 dlive-dl.py -h 
-usage: dlive-dl.py [-h] [-l] [-q] url
+usage: dlive-dl.py [-h] [-l] [-q #] [-o path] url
 
 positional arguments:
-  url            vod archive url
+  url                   vod url
 
 optional arguments:
-  -h, --help     show this help message and exit
-  -l, --list     list available encodings
-  -q, --quality  define which quality of video to download
+  -h, --help            show this help message and exit
+  -l, --list            list available encodings and exit
+  -q #, --quality #     define which quality of video to download
+  -o path, --outdir path
+                        directory to save the video to
 
 ```
 
