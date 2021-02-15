@@ -18,11 +18,12 @@ def main():
                         default=os.getcwd())
     args = parser.parse_args()
 
-    vod_id = args.url.split('/')[-1]
+    perm_link = args.url.split('/')[-1]
+    vod_id = perm_link.split('+')[1]
     pb_info = get_playback_info(args.url)
 
     # define video info
-    root_query = f'$ROOT_QUERY.pastBroadcast({{"permlink":"{vod_id}"}})'
+    root_query = f'$ROOT_QUERY.pastBroadcast({{"permlink":"{perm_link}"}})'
     info = pb_info['defaultClient'][root_query]
     title = info['title']
     user = info['creator']['id'].split('user:')[1]
@@ -31,7 +32,7 @@ def main():
     vid_info = parse_vod_m3u8(playback_url)
     videos = []
     for vid in vid_info:
-        v = Video(user, title, vid['resolution'], vid['quality'], vid['url'], vid['bandwidth'])
+        v = Video(user, vod_id, title, vid['resolution'], vid['quality'], vid['url'], vid['bandwidth'])
         videos.append(v)
 
     if args.list:
@@ -96,13 +97,14 @@ def format_duration(duration):
 
 
 class Video(object):
-    def __init__(self, user, title, resolution, quality, playback_url, bandwidth):
+    def __init__(self, user, vod_id, title, resolution, quality, playback_url, bandwidth):
         self.user = user
+        self.vod_id = vod_id
         self.title = title
         self.resolution = resolution
         self.quality = quality
         self.m3u8_url = playback_url
-        self.filename = f'{self.user}-{self.title}-{resolution}-{quality}.mp4'
+        self.filename = f'{self.user}-{vod_id}-{resolution}-{quality}.mp4'
         self._ts_urls = None
         self._duration = None
         self._m3u8 = None
