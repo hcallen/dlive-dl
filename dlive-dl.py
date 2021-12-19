@@ -5,7 +5,7 @@ import re
 import shutil
 import sys
 import tempfile
-import urllib.request
+from urllib import request
 
 
 def main():
@@ -18,15 +18,13 @@ def main():
                         default=os.getcwd())
     args = parser.parse_args()
 
-    perm_link = args.url.split('/')[-1]
-    vod_id = perm_link.split('+')[1]
+    vod_id = args.url.split('+')[1]
     pb_info = get_playback_info(args.url)
 
     # define video info
-    root_query = f'$ROOT_QUERY.pastBroadcast({{"permlink":"{perm_link}"}})'
-    info = pb_info['defaultClient'][root_query]
+    info = pb_info['data']['pastBroadcast']
     title = info['title']
-    user = info['creator']['id'].split('user:')[1]
+    user = info['creator']['displayname']
     playback_url = info['playbackUrl']
 
     vid_info = parse_vod_m3u8(playback_url)
@@ -52,13 +50,39 @@ def main():
 
 
 def get_playback_info(url):
-    response = urllib.request.urlopen(url)
-    html = response.read().decode('utf-8')
-    text = html.replace('\n', '').replace('\t', '')
-    match = re.search('window.__APOLLO_STATE__=(.*);\(function', text)
-    if not match:
-        raise Exception('Failed to find playback info')
-    return json.loads(match.group(1))
+    perm_link = url.split('/')[-1]
+    api_url = 'https://graphigo.prd.dlive.tv/'
+    data = {"operationName": "PastBroadcastPage",
+            "variables": {
+                      "permlink": perm_link,
+                      "commentsFirst": 0,
+                      "topContributionsFirst": 0,
+                      "isLoggedIn": False
+                  },
+            "extensions": {
+                      "persistedQuery": {
+                          "version": 1,
+                          "sha256Hash": "8fa2f4a94174e9552b76190ae847926e283f292e24b5f6b4908acffb6902805f"
+                      }
+                  }
+            }
+
+    data = json.dumps(data).encode()
+    r = request.Request(api_url, method='POST')
+    r.add_header('Content-Type', 'application/json')
+    response = request.urlopen(r, data=data)
+
+    if response.status != 200:
+        raise Exception(f'Unexpected response!\n{response.status - response.msg - response.reason}')
+
+    pb_json = response.read().decode('utf-8')
+    pb_info = json.loads(pb_json)
+
+    if 'errors' in pb_info.keys():
+        errors = '\n'.join(error['message'] for error in pb_info['errors'])
+        raise Exception(f'Unexpected response data!\n{errors}')
+
+    return pb_info
 
 
 def print_qualities(videos):
@@ -69,7 +93,7 @@ def print_qualities(videos):
 
 def parse_vod_m3u8(url):
     vid_info = []
-    m3u8_text = urllib.request.urlopen(url).read().decode('utf-8')
+    m3u8_text = request.urlopen(url).read().decode('utf-8')
     m3u8_lines = m3u8_text.splitlines()
     for i, line in enumerate(m3u8_lines):
         if line.startswith('#EXT-X-STREAM-INF:'):
@@ -127,7 +151,7 @@ class Video(object):
             out_file = os.path.join(temp_dir.name, str(i) + '.ts')
             block_size = 1024
             try:
-                response = urllib.request.urlopen(self.ts_urls[i])
+                response = request.urlopen(self.ts_urls[i])
                 with open(out_file, 'wb') as f:
                     while True:
                         buffer = response.read(block_size)
@@ -166,7 +190,7 @@ class Video(object):
     def m3u8(self):
         if self._m3u8:
             return self._m3u8
-        self._m3u8 = urllib.request.urlopen(self.m3u8_url).read().decode('utf-8')
+        self._m3u8 = request.urlopen(self.m3u8_url).read().decode('utf-8')
         return self._m3u8
 
     @property
